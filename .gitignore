@@ -1,0 +1,5 @@
+/bin/
+.tmp/
+/dist/
+secret.properties
+mobilepki.org-secret.properties

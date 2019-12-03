@@ -1,0 +1,181 @@
+<project name="Finastra Saturn/PSD2 Demo" default="help">
+
+  <!-- set properties for this build -->
+  <property file="public.properties"/>
+
+  <!-- 
+    oauth2_client_id=
+    oauth2_client_secret=
+  -->
+  <property name="application.secrets" location="secret.properties"/>
+  <condition property="app_secrets_set">
+    <available file="${application.secrets}"/>
+  </condition>
+  <fail message="'${application.secrets}' not found!" unless="app_secrets_set"/>
+  <property file="${application.secrets}"/>
+    
+  <condition property="inhouse" value="inhouse-" else="">
+    <equals arg1="${inhouse_service_host}" arg2="${service_host}"/>
+  </condition>
+
+  <property name="openkeystore.dir" location="${@openkeystore}"/>
+  <property name="saturn.dir" location="${@saturn}"/>
+    
+  <property name="payment-network-root" value="${saturn.dir}/resources/keys/payment-network-rootca.cer"/>
+  <property name="acquirer-network-root" value="${saturn.dir}/resources/keys/acquirer-network-rootca.cer"/>
+  <property file="${saturn.dir}/resources/android.properties"/>
+  <property file="${saturn.dir}/resources/w3c.properties"/>
+
+  <property name="src.dir" value="src"/>
+  <property name="test.dir" value="test"/>
+  <property name="temp.dir" value=".tmp"/>
+  <property name="dist.dir" location="dist"/>
+  <property name="keys.dir" location="keys"/>
+  <property name="cards.dir" location="card-images"/>
+  <property name="class_war_path" value="WEB-INF/classes/org/webpki/webapps/finastra_psd2_saturn"/>
+
+  <property name="logging" value="true"/>
+  <property name="bouncycastle" value="true"/>
+  
+  <property name="application" value="${service_path}.war"/>
+
+  <property name="saturn-extensions" value="saturn-extensions.json"/>
+  
+  <property name="hashalg" value=""/>
+  <property name="webpki.lib.dir" location="${openkeystore.dir}/library/dist"/>
+  <property name="reference.lib.dir" location="${openkeystore.dir}/resources/third-party-jars"/>
+  
+  <property name="javaversion" value="1.8"/>
+  <property name="debug" value="on"/>
+
+  <property environment="env"/>
+  <property name="catalina.home" value="${env.CATALINA_HOME}"/>
+
+  <target name="help">
+     <echo message="build tomcat createkeys"/>
+  </target>
+
+  <target name="_init" unless="app_path">
+    <!-- Set up where application should reside --> 
+    <condition property="tomcat_app_root_set">
+      <isset property="env.CATALINA_HOME"/>
+    </condition>
+    <fail message="CATALINA_HOME must be set to environment!" unless="tomcat_app_root_set"/>
+  </target>
+
+  <target name="tomcat" depends="_init">
+    <antcall target="build"/>
+    <copy file="${dist.dir}/${application}" todir="${env.CATALINA_HOME}/webapps" overwrite="true" preservelastmodified="true"/>
+  </target>
+
+  <target name="build">
+    <property name="zip.webpki.lib.dir" value="${webpki.lib.dir}"/>
+    <basename property="payment-network-root.base" file="${payment-network-root}"/>
+    <basename property="acquirer-network-root.base" file="${acquirer-network-root}"/>
+    <mkdir dir="${dist.dir}"/>
+    <delete dir="${temp.dir}"/>
+    <mkdir dir="${temp.dir}"/>
+    <fixcrlf srcdir="."
+       tab="remove"
+       tablength="4"
+       eol="lf"
+       eof="remove"
+       includes="**/*.java, **/*.css, **/*.svg, **/*.xml, **/*.sql, **/*.json, *.properties"/>
+    <copy file="web.xml" todir="${temp.dir}"/>
+    <javac debug="${debug}"
+           source="${javaversion}"
+           target="${javaversion}"
+           srcdir="${src.dir}:${test.dir}:${saturn.dir}/resources/common:${saturn.dir}/methods/src"
+           destdir="${temp.dir}"
+           includeAntRuntime="false">
+        <include name="org/webpki/webapps/**/*.java"/>
+        <classpath>
+            <fileset dir="${webpki.lib.dir}">
+              <include name="webpki.org-libext*.jar"/>
+              <include name="webpki.org-webutil*.jar"/>
+           </fileset>
+           <fileset dir="${reference.lib.dir}">
+              <include name="servlet-api.jar"/>
+           </fileset>
+        </classpath>
+    </javac>
+    <replace file="${temp.dir}/web.xml">
+      <replacefilter token="@oauth2-client-id@" value="${oauth2_client_id}"/>
+      <replacefilter token="@oauth2-client-secret@" value="${oauth2_client_secret}"/>
+      <replacefilter token="@android-webpki-versions@" value="${@android.webpki.versions}"/>
+      <replacefilter token="@svg-card-image@" value="${inhouse}${svg_card_image}"/>
+      <replacefilter token="@server-tls-certificate@" value="${kg2_tls_cert_file}"/>
+      <replacefilter token="@test-merchant-url@" value="${test_merchant_url}"/>
+      <replacefilter token="@use-w3c-payment-request@" value="${@w3c.paymentrequest}"/>
+      <replacefilter token="@w3c-payment-request-url@" value="${@w3c.manifesthost}/${@w3c.manifestpath}/method"/>
+      <replacefilter token="@bank-base-url@" value="${bank_base_url}"/>
+      <replacefilter token="@key-password@" value="${keypassword}"/>
+      <replacefilter token="@payment-root@" value="${payment-network-root.base}"/>
+      <replacefilter token="@acquirer-root@" value="${acquirer-network-root.base}"/>
+      <replacefilter token="@saturn-extensions@" value="${saturn-extensions}"/>
+      <replacefilter token="@bank-common-name@" value="${bank_common_name}"/>
+      <replacefilter token="@bank-eecert@" value="${bank_eecert}"/>
+      <replacefilter token="@bank-encrypt@" value="${bank_encrypt}"/>
+      <replacefilter token="@bank-kg2kmk@" value="${inhouse}${bank_kg2kmk}"/>
+      <replacefilter token="@logging@" value="${logging}"/>
+    </replace>
+    <war destfile="${dist.dir}/${application}" webxml="${temp.dir}/web.xml">
+      <classes dir="${temp.dir}">
+         <exclude name="web.xml"/>
+      </classes>
+      <lib dir="${zip.webpki.lib.dir}">
+         <include name="webpki.org-libext*.jar"/>
+         <include name="webpki.org-webutil*.jar"/>
+      </lib>
+      <fileset dir="web"/>
+      <zipfileset dir="${keys.dir}" prefix="${class_war_path}">
+        <include name="${inhouse}${bank_kg2kmk}"/>
+        <include name="${bank_eecert}"/>
+        <include name="${bank_encrypt}"/>
+      </zipfileset>
+      <zipfileset dir="${cards.dir}" prefix="${class_war_path}">
+        <include name="${inhouse}${svg_card_image}"/>
+      </zipfileset>
+      <zipfileset file="${payment-network-root}" prefix="${class_war_path}"/>
+      <zipfileset file="${acquirer-network-root}" prefix="${class_war_path}"/>
+      <zipfileset file="${saturn-extensions}" prefix="${class_war_path}"/>
+    </war>
+  </target>
+
+  <target name="_createonekey">
+    <java fork="yes"
+          classname="org.webpki.ca.CommandLineCA"
+          dir="${keys.dir}"
+          failonerror="true">
+        <classpath>
+          <fileset dir="${webpki.lib.dir}">
+            <include name="webpki.org-libext*.jar"/>
+            <include name="webpki.org-webutil*.jar"/>
+          </fileset>
+          <fileset dir="${reference.lib.dir}">
+            <include name="servlet-api.jar"/>
+          </fileset>
+          <fileset dir="${reference.lib.dir}">
+            <include name="bcprov*.jar"/>
+          </fileset>
+        </classpath>
+        <arg line="${cmd}"/>
+    </java>
+  </target>
+
+  <target name="createkeys">
+    <antcall target="_createonekey">
+      <param name="cmd" value="-out/keyalias mykey -selfsigned -entity/ee -subject &quot;CN=Finastra Key Management Key1&quot; -validity/start 2010-07-10T10:00:00 -validity/end 2030-07-10T09:59:59 -out/storetype PKCS12 -out/keystore inhouse-${bank_kg2kmk} -out/storepass ${keypassword} -out/keypass ${keypassword} -ecccurve NIST_P_256 -sigalg ECDSA_SHA256 -serial 1"/>
+    </antcall>
+    <antcall target="_createonekey">
+      <param name="cmd" value="-out/keyalias mykey -selfsigned -entity/ee -subject &quot;CN=Finastra Key Management Key1&quot; -validity/start 2010-07-10T10:00:00 -validity/end 2030-07-10T09:59:59 -out/storetype PKCS12 -out/keystore ${bank_kg2kmk} -out/storepass ${keypassword} -out/keypass ${keypassword} -ecccurve NIST_P_256 -sigalg ECDSA_SHA256 -serial 1"/>
+    </antcall>
+    <antcall target="_createonekey">
+      <param name="cmd" value="-out/keyalias mykey -selfsigned -entity/ee -subject &quot;CN=Finastra Encryption Key&quot; -validity/start 2010-07-10T10:00:00 -validity/end 2030-07-10T09:59:59 -out/storetype PKCS12 -out/keystore ${bank_encrypt} -out/storepass ${keypassword} -out/keypass ${keypassword} -ecccurve NIST_P_256 -sigalg ECDSA_SHA256 -serial 1"/>
+    </antcall>
+    <antcall target="_createonekey">
+      <param name="cmd" value="-out/keyalias mykey -ca/addpath all -ca/keypass ${keypassword} -ca/storetype PKCS12 -ca/storepass ${keypassword} -ca/keystore ${saturn.dir}/resources/keys/payment-network-subca.p12 -entity/ee -extension/ku digitalSignature -subject &quot;CN=Finastra, O=PSD2, serialNumber=502017-7753, C=SE&quot; -validity/start 2019-01-01T00:00:00 -validity/end 2022-07-10T09:59:59 -out/storetype PKCS12 -out/keystore ${bank_eecert} -out/storepass ${keypassword} -out/keypass ${keypassword} -ecccurve NIST_P_256 -sigalg ECDSA_SHA256"/>
+    </antcall>
+  </target>
+  
+</project>
