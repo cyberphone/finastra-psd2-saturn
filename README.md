@@ -1,6 +1,6 @@
 # Finastra PSD2/Saturn Interface
 
-Proof of concept system using Swedbank's Open Banking "sandbox".
+Proof of concept system using Finastra's Open Banking "sandbox".
 
 Core concept: https://cyberphone.github.io/openbankingwallet/
 
